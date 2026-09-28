@@ -194,7 +194,7 @@ print("12 Restaurants with few reviews but high scores")
 print("==============================\n")
 
 // Uber Eats only publishes a score after 10 ratings, so the minimum value of ratings is 10.
-// "Few reviews" is defined as 20 or less (the lowest ~10% of rated restaurants).
+// "Few reviews" is defined as 20 or less (roughly the lowest fifth of rated restaurants: 19% of them).
 db.restaurants.find(
   {
     score: { $gte: 4.5 },
