@@ -90,4 +90,33 @@ printjson(
   ]).toArray()
 )
 
+// 12. Category spelling variants
+// Two labels that only differ in case, "&" vs "and" or separators ("Coffee & Tea" / "coffee and tea") split one category in two.
+print("\n12 Category spelling variants (should be [])")
+printjson(
+  db.restaurants.aggregate([
+    { $unwind: "$category" },
+    { $group: { _id: "$category" } },
+    {
+      // Builds a comparison key: lowercase, "&" -> "and", and any run of non-alphanumeric characters -> a single space.
+      $project: {
+        key: {
+          $trim: {
+            input: {
+              $reduce: {
+                input: { $regexFindAll: { input: { $replaceAll: { input: { $toLower: "$_id" }, find: "&", replacement: " and " } }, regex: /[a-z0-9]+/ } },
+                initialValue: "",
+                in: { $concat: ["$$value", " ", "$$this.match"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    // $addToSet collects the distinct labels that share a key. More than one label means spelling variants.
+    { $group: { _id: "$key", variants: { $addToSet: "$_id" } } },
+    { $match: { "variants.1": { $exists: true } } }
+  ]).toArray()
+)
+
 print("\n✅ Validation completed\n")

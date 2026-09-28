@@ -29,11 +29,6 @@ printjson(db.restaurants.createIndex({ name: 1 }))
 
 // A single index on category is not created: the compound index (category + score) below already covers
 // every query that filters only by category, because MongoDB can use any prefix of a compound index.
-// If an older run created it, it is removed to avoid paying the write/storage cost of a redundant index.
-if (db.restaurants.getIndexes().some(idx => idx.name === "category_1")) {
-  db.restaurants.dropIndex("category_1")
-  print("Redundant index category_1 removed")
-}
 
 print("\nIndex: score")
 printjson(db.restaurants.createIndex({ score: -1 }))
@@ -57,6 +52,21 @@ print("\nIndex: compound (category + score)")
 printjson(db.restaurants.createIndex({ category: 1, score: -1 }))
 
 print("✅ Indexes created")
+
+// ======================================
+// REMOVE UNEXPECTED INDEXES
+// ======================================
+// This script is the single source of truth for the indexes of the collection.
+// Any other index (left by an older schema or created by hand) costs storage and slows down every insert, so it is removed.
+// The _id_ index is mandatory in MongoDB and is always kept.
+const expectedIndexes = ["_id_", "name_1", "score_-1", "ratings_-1", "address.zip_code_1", "location_2dsphere", "category_1_score_-1"]
+
+db.restaurants.getIndexes()
+  .filter(idx => !expectedIndexes.includes(idx.name))
+  .forEach(idx => {
+    db.restaurants.dropIndex(idx.name)
+    print(`Unexpected index removed: ${idx.name}`)
+  })
 
 // ======================================
 // STRUCTURE VALIDATION (PRO)

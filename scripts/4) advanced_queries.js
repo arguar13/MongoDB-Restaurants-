@@ -308,23 +308,50 @@ printjson(
 
 
 print("\n==============================")
-print("18 Restaurants ordered by weighted popularity")
+print("18 Top 10 restaurants by Bayesian weighted rating")
 print("===============================\n")
 
-// Build a restaurant popularity ranking
+// A 5.0 with 10 reviews is weaker evidence than a 4.9 with 500. The Bayesian average (the IMDb Top 250 formula)
+// pulls every score towards the global mean, and the pull fades as the number of reviews grows:
+//   weighted_rating = (v / (v + m)) * R + (m / (v + m)) * C
+//   R = restaurant score, v = its number of reviews, C = mean score of all restaurants, m = prior weight.
+// m is the median number of reviews: a restaurant needs as many reviews as a typical one before its own score weighs more than the global mean.
+
+// Step 1: C and m are computed from the data, not hardcoded.
+// $percentile (MongoDB 7.0+) returns an array with one value per requested percentile.
+const prior = db.restaurants.aggregate([
+  { $match: { score: { $ne: null }, ratings: { $ne: null } } },
+  {
+    $group: {
+      _id: null,
+      C: { $avg: "$score" },
+      m: { $percentile: { input: "$ratings", p: [0.5], method: "approximate" } }
+    }
+  }
+]).toArray()[0]
+const C = prior.C
+const m = prior.m[0]
+print(`Global mean score (C): ${C.toFixed(2)} | Prior weight (m, median reviews): ${m}\n`)
+
+// Step 2: weighted rating per restaurant.
 printjson(
   db.restaurants.aggregate([
-    // Only restaurants with both values: $multiply returns null if one of them is missing.
     { $match: { score: { $ne: null }, ratings: { $ne: null } } },
     {
-      // $addFields Adds a new calculated field called popularity_score. It is obtained by multiplying score and ratings.
+      // $addFields Adds a new calculated field called weighted_rating with the formula above.
       $addFields: {
-        popularity_score: {$multiply: ["$score", "$ratings"]}
+        weighted_rating: {
+          $add: [
+            { $multiply: [{ $divide: ["$ratings", { $add: ["$ratings", m] }] }, "$score"] },
+            { $multiply: [{ $divide: [m, { $add: ["$ratings", m] }] }, C] }
+          ]
+        }
       }
     },
-    { $sort: { popularity_score: -1 } },
+    // Restaurants with the same score and reviews get the same weighted rating: name is only a deterministic tie-breaker.
+    { $sort: { weighted_rating: -1, ratings: -1, name: 1 } },
     { $limit: 10 },
-    { $project: { name: 1, score: 1, ratings: 1, popularity_score: 1 } }
+    { $project: { name: 1, score: 1, ratings: 1, weighted_rating: { $round: ["$weighted_rating", 3] } } }
   ]).toArray()
 )
 

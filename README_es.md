@@ -70,6 +70,7 @@ Construido con `pandas` y `pymongo`:
 
 - Carga de datos CSV (códigos postales leídos como texto para conservar los ceros iniciales)
 - Limpieza y normalización: entidades HTML, espacios sobrantes, rangos de precio inválidos, ZIP+4 → ZIP de 5 dígitos, coordenadas `(0, 0)` usadas como marcador, restaurantes duplicados
+- Unificación de variantes de escritura de categorías (`Burgers` / `burger`, `Coffee and Tea` / `Coffee & Tea`) bajo la etiqueta más frecuente
 - Ingeniería de características (campos anidados, GeoJSON)
 - Valores faltantes guardados como `null` real (no `NaN`, que rompe `$avg` y los filtros `$ne: null`)
 - Inserción por lotes en MongoDB
@@ -83,6 +84,7 @@ Detecta:
 - Duplicados
 - Datos de ubicación incompletos
 - Formatos inválidos de ZIP / precio y valores `NaN`
+- Variantes de escritura de categorías
 
 ## Estrategia de Indexación
 
@@ -90,6 +92,8 @@ Detecta:
 - `address.zip_code`
 - Índice 2dsphere para ubicación
 - Índice compuesto (`category`, `score`), que también resuelve las consultas solo por categoría (prefijo del índice), por lo que no hace falta un índice separado sobre `category`
+
+`setup.js` es la única fuente de verdad de los índices: cualquier índice que no esté declarado allí se elimina.
 
 Mejora el rendimiento de filtrado, ordenamiento y consultas geoespaciales.
 
@@ -106,7 +110,7 @@ Utilizando el Framework de Agregación de MongoDB:
 
 ## Consultas Avanzadas
 
-- Puntaje de popularidad (calificación × cantidad de reseñas)
+- Calificación ponderada bayesiana (fórmula de IMDb): ordena los restaurantes por calificación teniendo en cuenta cuántas reseñas la respaldan
 - Análisis de precio versus calificación
 - Detección de restaurantes con alta calificación y baja visibilidad
 - Filtrado por categoría
@@ -126,7 +130,7 @@ Permite:
 
 ## Cómo Ejecutarlo
 
-Requisitos: Python 3.12+, MongoDB corriendo en `localhost:27017` y `mongosh`.
+Requisitos: Python 3.12+, MongoDB 7.0+ corriendo en `localhost:27017` y `mongosh`.
 
 ```bash
 pip install -r requirements.txt

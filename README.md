@@ -69,6 +69,7 @@ Built with `pandas` + `pymongo`:
 
 - Load CSV data (ZIP codes read as text to keep leading zeros)  
 - Clean and normalize: HTML entities, extra spaces, invalid price levels, ZIP+4 → 5-digit ZIP, `(0, 0)` placeholder coordinates, duplicated restaurants  
+- Category spelling variants unified (`Burgers` / `burger`, `Coffee and Tea` / `Coffee & Tea`) under the most frequent label  
 - Feature engineering (nested fields, GeoJSON)  
 - Missing values stored as real `null` (not `NaN`, which breaks `$avg` and `$ne: null` filters)  
 - Batch insertion into MongoDB  
@@ -82,6 +83,7 @@ Detects:
 - Duplicates  
 - Incomplete location data  
 - Invalid ZIP / price formats and `NaN` values  
+- Category spelling variants  
 
 ## Indexing Strategy
 
@@ -89,6 +91,8 @@ Detects:
 - `address.zip_code`  
 - 2dsphere index for location  
 - Compound index (category, score), which also serves category-only queries (index prefix), so no separate `category` index is needed  
+
+`setup.js` is the single source of truth for indexes: any index not declared there is removed.
 
 Improves filtering, sorting, and geospatial performance.
 
@@ -105,7 +109,7 @@ Using MongoDB Aggregation Framework:
 
 ## Advanced Queries
 
-- Popularity score (rating × reviews)  
+- Bayesian weighted rating (IMDb formula): ranks restaurants by score while accounting for how many reviews support it  
 - Price vs rating analysis  
 - High rating / low visibility detection  
 - Category filtering  
@@ -125,7 +129,7 @@ Enables:
 
 ## How to Run
 
-Requirements: Python 3.12+, MongoDB running on `localhost:27017` and `mongosh`.
+Requirements: Python 3.12+, MongoDB 7.0+ running on `localhost:27017` and `mongosh`.
 
 ```bash
 pip install -r requirements.txt

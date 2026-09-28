@@ -1,5 +1,6 @@
 import html
 import os
+import re
 from pathlib import Path
 
 import numpy as np
@@ -103,11 +104,48 @@ def clean_category(category):
     ]
 
 
+# The source mixes spellings of the same category: "Burgers" / "burger", "Coffee and Tea" / "Coffee & Tea",
+# "Sandwich" / "Sandwiches", "Vegetarian Friendly" / "Vegetarian-Friendly".
+# This key ignores case, "&" vs "and", separators and singular/plural, so every variant of a category gets the same key.
+def category_key(category):
+    text = category.lower().replace("&", " and ")
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+
+    words = []
+    for word in text.split():
+        if word.endswith(("ches", "shes", "xes", "sses")):
+            word = word[:-2]
+        elif word.endswith("ies") and len(word) > 4:
+            word = word[:-3] + "y"
+        elif word.endswith("s") and not word.endswith("ss") and len(word) > 3:
+            word = word[:-1]
+        words.append(word)
+
+    return " ".join(words)
+
+
+# Maps each category variant to its canonical label: the most frequent spelling in the dataset.
+# Using the data to choose the label avoids maintaining a manual synonyms dictionary.
+def build_category_map(category_lists):
+    counts = pd.Series([c for categories in category_lists for c in categories]).value_counts()
+
+    canonical = {}
+    for category in counts.index:  # value_counts() is sorted by frequency, so the first variant seen for a key wins
+        canonical.setdefault(category_key(category), category)
+
+    return {category: canonical[category_key(category)] for category in counts.index}
+
+
 def engineer_features(df):
     df = df.copy()
 
     # Category -> Array
     df["category"] = df["category"].apply(clean_category)
+
+    # Category variants -> canonical label.
+    # dict.fromkeys(...) removes the duplicates it can create ("Sandwich" + "Sandwiches" in the same restaurant) while keeping the order.
+    category_map = build_category_map(df["category"])
+    df["category"] = df["category"].apply(lambda categories: list(dict.fromkeys(category_map[c] for c in categories)))
 
     # Address -> Embedded Document
     # In zip(...) the zip function takes two (or more) iterables and combines them in pairs. In this case, each iteration returns a tuple (address, zip_code)
