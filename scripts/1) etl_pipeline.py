@@ -106,7 +106,7 @@ def clean_category(category):
 
 # The source mixes spellings of the same category: "Burgers" / "burger", "Coffee and Tea" / "Coffee & Tea",
 # "Sandwich" / "Sandwiches", "Vegetarian Friendly" / "Vegetarian-Friendly".
-# This key ignores case, "&" vs "and", separators and singular/plural, so every variant of a category gets the same key.
+# This key ignores case, "&" vs "and", spaces, separators and singular/plural ("Barfood" / "Bar Food"), so every variant of a category gets the same key.
 def category_key(category):
     text = category.lower().replace("&", " and ")
     text = re.sub(r"[^a-z0-9]+", " ", text)
@@ -121,7 +121,7 @@ def category_key(category):
             word = word[:-1]
         words.append(word)
 
-    return " ".join(words)
+    return "".join(words)
 
 
 # Maps each category variant to its canonical label: the most frequent spelling in the dataset.

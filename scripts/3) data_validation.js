@@ -91,14 +91,14 @@ printjson(
 )
 
 // 12. Category spelling variants
-// Two labels that only differ in case, "&" vs "and" or separators ("Coffee & Tea" / "coffee and tea") split one category in two.
+// Two labels that only differ in case, "&" vs "and", spaces or separators ("Coffee & Tea" / "coffee and tea", "Barfood" / "Bar Food") split one category in two.
 print("\n12 Category spelling variants (should be [])")
 printjson(
   db.restaurants.aggregate([
     { $unwind: "$category" },
     { $group: { _id: "$category" } },
     {
-      // Builds a comparison key: lowercase, "&" -> "and", and any run of non-alphanumeric characters -> a single space.
+      // Builds a comparison key: lowercase, "&" -> "and", and only the alphanumeric characters (spaces and separators are dropped).
       $project: {
         key: {
           $trim: {
@@ -106,7 +106,7 @@ printjson(
               $reduce: {
                 input: { $regexFindAll: { input: { $replaceAll: { input: { $toLower: "$_id" }, find: "&", replacement: " and " } }, regex: /[a-z0-9]+/ } },
                 initialValue: "",
-                in: { $concat: ["$$value", " ", "$$this.match"] }
+                in: { $concat: ["$$value", "$$this.match"] }
               }
             }
           }
