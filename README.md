@@ -67,9 +67,10 @@ MongoDB is used as:
 
 Built with `pandas` + `pymongo`:
 
-- Load CSV data  
-- Clean and normalize  
+- Load CSV data (ZIP codes read as text to keep leading zeros)  
+- Clean and normalize: HTML entities, extra spaces, invalid price levels, ZIP+4 → 5-digit ZIP, `(0, 0)` placeholder coordinates, duplicated restaurants  
 - Feature engineering (nested fields, GeoJSON)  
+- Missing values stored as real `null` (not `NaN`, which breaks `$avg` and `$ne: null` filters)  
 - Batch insertion into MongoDB  
 
 ## Data Validation Layer
@@ -80,13 +81,14 @@ Detects:
 - Missing fields  
 - Duplicates  
 - Incomplete location data  
+- Invalid ZIP / price formats and `NaN` values  
 
 ## Indexing Strategy
 
-- `name`, `category`, `score`, `ratings`  
+- `name`, `score`, `ratings`  
 - `address.zip_code`  
 - 2dsphere index for location  
-- Compound index (category, score)  
+- Compound index (category, score), which also serves category-only queries (index prefix), so no separate `category` index is needed  
 
 Improves filtering, sorting, and geospatial performance.
 
@@ -120,6 +122,22 @@ Enables:
 - Nearby recommendations  
 - Proximity search  
 - Regional insights  
+
+## How to Run
+
+Requirements: Python 3.12+, MongoDB running on `localhost:27017` and `mongosh`.
+
+```bash
+pip install -r requirements.txt
+cd scripts
+python "1) etl_pipeline.py"
+mongosh restaurants_db "2) setup.js"
+mongosh restaurants_db "3) data_validation.js"
+mongosh restaurants_db "4) advanced_queries.js"
+mongosh restaurants_db "5) aggregation_kpis.js"
+```
+
+The ETL reads `MONGO_URI` and `MONGO_DB` from environment variables (defaults: `mongodb://localhost:27017` and `restaurants_db`).
 
 ## Author
 

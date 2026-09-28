@@ -27,8 +27,13 @@ print("Index: name")
 // printjson(...) Prints the result of the operation to the console in JSON format.
 printjson(db.restaurants.createIndex({ name: 1 }))
 
-print("\nIndex: category")
-printjson(db.restaurants.createIndex({ category: 1 }))
+// A single index on category is not created: the compound index (category + score) below already covers
+// every query that filters only by category, because MongoDB can use any prefix of a compound index.
+// If an older run created it, it is removed to avoid paying the write/storage cost of a redundant index.
+if (db.restaurants.getIndexes().some(idx => idx.name === "category_1")) {
+  db.restaurants.dropIndex("category_1")
+  print("Redundant index category_1 removed")
+}
 
 print("\nIndex: score")
 printjson(db.restaurants.createIndex({ score: -1 }))
@@ -48,6 +53,7 @@ printjson(db.restaurants.createIndex({ location: "2dsphere" }))
 print("\nIndex: compound (category + score)")
 // .createIndex({ category: 1, score: -1 }) Creates an index on two fields at once: category in ascending order (1), score in descending order (-1).
 // This means that MongoDB will first organize by category, and within each category, it will order by score from highest to lowest.
+// It also serves queries that filter only by category (index prefix).
 printjson(db.restaurants.createIndex({ category: 1, score: -1 }))
 
 print("✅ Indexes created")

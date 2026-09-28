@@ -5,8 +5,8 @@ print("===============================\n")
 // Filter { score: { $ne: null } } Selects only documents where the score field is not null ($ne = not equal).
 // Projection { name: 1, score: 1, ratings: 1, category: 1 } Returns only the name, score, ratings, and category fields. The 1 means "include this field".
 // .sort({ score: -1, ratings: -1 }) Sorts the results first by score in descending order (-1 = highest to lowest). If there is a tie in score, it uses ratings, also in descending order, as a secondary criterion.
-// .forEach(printjson) Iterates over each document in the result and prints it in JSON format to the console.db.restaurants.find(
-db.restaurants.find(   
+// .forEach(printjson) Iterates over each document in the result and prints it in JSON format to the console.
+db.restaurants.find(
   { score: { $ne: null } },
   { name: 1, score: 1, ratings: 1, category: 1 }
 )
@@ -37,19 +37,24 @@ db.restaurants.find(
   { price_range: "$$$" },
   { name: 1, price_range: 1, score: 1 }
 )
+.sort({ score: -1 })
+.limit(20)
 .forEach(printjson)
 
 
 print("\n==============================")
-print("4 Restaurants with a score greater than 4.5")
+print("4 Restaurants with a score of 4.5 or higher")
 print("==============================\n")
 
 // Filter { score: { $gte: 4.5 } } Selects only documents where the score field is greater than or equal to 4.5.
+// More than 25k restaurants match, so the total is shown and only the top 20 are printed.
+print("Total:", db.restaurants.countDocuments({ score: { $gte: 4.5 } }))
 db.restaurants.find(
   { score: { $gte: 4.5 } },
   { name: 1, score: 1, ratings: 1 }
 )
-.sort({ score: -1 })
+.sort({ score: -1, ratings: -1 })
+.limit(20)
 .forEach(printjson)
 
 
@@ -62,6 +67,8 @@ db.restaurants.find(
   { category: /Sushi/i },
   { name: 1, category: 1, score: 1 }
 )
+.sort({ score: -1 })
+.limit(20)
 .forEach(printjson)
 
 
@@ -73,6 +80,8 @@ db.restaurants.find(
   { category: /Vegetarian/i },
   { name: 1, category: 1, score: 1 }
 )
+.sort({ score: -1 })
+.limit(20)
 .forEach(printjson)
 
 
@@ -124,20 +133,23 @@ printjson(
 
 
 print("\n==============================")
-print("9 Average score per ZIP code")
+print("9 Average score per ZIP code (min. 10 rated restaurants)")
 print("=============================\n")
 
 printjson(
   db.restaurants.aggregate([
-    { $match: { score: { $ne: null } } },
+    { $match: { score: { $ne: null }, "address.zip_code": { $ne: null } } },
     {
       $group: {
-        _id: "$address.zip_code", 
+        _id: "$address.zip_code",
         avg_score: { $avg: "$score" },
         restaurants: { $sum: 1 }
       }
     },
-    { $sort: { avg_score: -1 } }
+    // A ZIP code with a single restaurant rated 5.0 would top the ranking. A minimum sample size keeps the average meaningful.
+    { $match: { restaurants: { $gte: 10 } } },
+    { $sort: { avg_score: -1 } },
+    { $limit: 10 }
   ]).toArray()
 )
   
@@ -167,11 +179,13 @@ print("\n==============================")
 print("11 Restaurants with more than 50 reviews")
 print("==============================\n")
 
+print("Total:", db.restaurants.countDocuments({ ratings: { $gt: 50 } }))
 db.restaurants.find(
   { ratings: { $gt: 50 } },
   { name: 1, ratings: 1, score: 1 }
 )
 .sort({ ratings: -1 })
+.limit(20)
 .forEach(printjson)
 
 
@@ -179,13 +193,17 @@ print("\n==============================")
 print("12 Restaurants with few reviews but high scores")
 print("==============================\n")
 
+// Uber Eats only publishes a score after 10 ratings, so the minimum value of ratings is 10.
+// "Few reviews" is defined as 20 or less (the lowest ~10% of rated restaurants).
 db.restaurants.find(
   {
     score: { $gte: 4.5 },
-    ratings: { $lt: 10 }
+    ratings: { $lte: 20 }
   },
   { name: 1, score: 1, ratings: 1 }
 )
+.sort({ score: -1, ratings: 1 })
+.limit(20)
 .forEach(printjson)
 
 
@@ -202,7 +220,8 @@ printjson(
         total_restaurants: { $sum: 1 }
       }
     },
-    { $sort: { total_restaurants: -1 } }
+    { $sort: { total_restaurants: -1 } },
+    { $limit: 20 }
   ]).toArray()
 )
 
@@ -211,10 +230,13 @@ print("\n==============================")
 print("14 Restaurants without score")
 print("=============================\n")
 
+// Around 28k restaurants have no score: the total is shown and only a sample is printed.
+print("Total:", db.restaurants.countDocuments({ score: null }))
 db.restaurants.find(
   { score: null },
   { name: 1, category: 1 }
 )
+.limit(10)
 .forEach(printjson)
 
 
@@ -222,10 +244,13 @@ print("\n==============================")
 print("15 Restaurants without a price range")
 print("==============================\n")
 
+// The ETL stores a missing price range as null (not as an empty string).
+print("Total:", db.restaurants.countDocuments({ price_range: null }))
 db.restaurants.find(
-  { price_range: "" },
+  { price_range: null },
   { name: 1, category: 1 }
 )
+.limit(10)
 .forEach(printjson)
 
 
@@ -242,10 +267,14 @@ printjson(
     {
       $group: {
         _id: "$category",
-        avg_ratings: { $avg: "$ratings" }
+        avg_ratings: { $avg: "$ratings" },
+        restaurants: { $sum: 1 }
       }
     },
-    { $sort: { avg_ratings: -1 } }
+    // Categories with very few restaurants are excluded so that one outlier does not define the average.
+    { $match: { restaurants: { $gte: 30 } } },
+    { $sort: { avg_ratings: -1 } },
+    { $limit: 20 }
   ]).toArray()
 )
 
@@ -256,8 +285,10 @@ print("==============================\n")
 
 printjson(
   db.restaurants.aggregate([
-    { $unwind: "$category" }, 
+    // Filtering and sorting before $unwind works on 35k documents (and can use the ratings index) instead of on every category copy.
+    { $match: { ratings: { $ne: null } } },
     { $sort: { ratings: -1 } },
+    { $unwind: "$category" },
     {
       $group: {
         _id: "$category",
@@ -270,7 +301,8 @@ printjson(
         max_ratings: { $first: "$ratings" }
       }
     },
-    { $sort: { max_ratings: -1 } }
+    { $sort: { max_ratings: -1 } },
+    { $limit: 20 }
   ]).toArray()
 )
 
@@ -282,6 +314,8 @@ print("===============================\n")
 // Build a restaurant popularity ranking
 printjson(
   db.restaurants.aggregate([
+    // Only restaurants with both values: $multiply returns null if one of them is missing.
+    { $match: { score: { $ne: null }, ratings: { $ne: null } } },
     {
       // $addFields Adds a new calculated field called popularity_score. It is obtained by multiplying score and ratings.
       $addFields: {
@@ -289,7 +323,8 @@ printjson(
       }
     },
     { $sort: { popularity_score: -1 } },
-    { $limit: 10 }
+    { $limit: 10 },
+    { $project: { name: 1, score: 1, ratings: 1, popularity_score: 1 } }
   ]).toArray()
 )
 
@@ -312,15 +347,19 @@ db.restaurants.find({
       $maxDistance: 3000
     }
   }
-})
+},
+{ name: 1, "address.full_address": 1, score: 1 }
+)
+.limit(10)
 .forEach(printjson)
 
 
 print("\n==============================")
-print("20 Restaurants within a geographic radius")
+print("20 Best rated restaurants within a 5 km radius")
 print("===============================\n")
 
-// This pipeline uses $geoNear to find the restaurants closest to a geographic point, adds a distance field with the calculated distance in meters, and returns the first 10 results ordered by proximity.
+// This pipeline uses $geoNear to find the restaurants within 5 km of a geographic point, adds a distance field with the calculated distance in meters,
+// and returns the 10 best rated ones. Unlike $near, $geoNear lets the result be re-sorted by another field after the distance filter.
 printjson(
   db.restaurants.aggregate([
     {
@@ -334,9 +373,22 @@ printjson(
         // distanceField: "distance" Creates an additional field in each document called distance. That field contains the calculated distance between the restaurant and the landmark.
         distanceField: "distance",
         // spherical: true Indicates that distance calculations should be performed on the Earth's sphere (realistic model), not on a Cartesian plane. This is important for geographic coordinates.
-        spherical: true
+        spherical: true,
+        // maxDistance: 5000 Only documents within 5000 meters (5 km) of the point are returned.
+        maxDistance: 5000,
+        // query: Filter applied together with the distance search. Only restaurants with a score.
+        query: { score: { $ne: null } }
       }
     },
-    { $limit: 10 }
+    { $sort: { score: -1, distance: 1 } },
+    { $limit: 10 },
+    {
+      $project: {
+        name: 1,
+        score: 1,
+        // $round: ["$distance", 0] Rounds the distance in meters to an integer for readability.
+        distance_m: { $round: ["$distance", 0] }
+      }
+    }
   ]).toArray()
 )

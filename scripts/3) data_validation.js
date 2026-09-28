@@ -17,7 +17,7 @@ print("\n3 Negative Ratings (should be 0)")
 printjson(db.restaurants.countDocuments({ ratings: { $lt: 0 } }))
 
 // 4. Documents without a name
-print("\n5 Documents without a name")
+print("\n4 Documents without a name")
 // The filter { name: { $in: [null, ""] } } means: Selects documents where the name field is in the list [null, ""].
 // That is, documents whose name is null (null) or empty ("").
 printjson(db.restaurants.countDocuments({ name: { $in: [null, ""] } }))
@@ -35,27 +35,58 @@ printjson(db.restaurants.countDocuments({ location: null }))
 print("\n7 Without ZIP code")
 printjson(db.restaurants.countDocuments({ "address.zip_code": null }))
 
-// 8. Duplicates by Name
-// This pipeline detects duplicate names in the restaurants collection, showing which ones are repeated and how many times.
-print("\n8 Possible duplicates by name")
+// 7b. ZIP code with invalid format
+print("\n7b ZIP code not in 5-digit format (should be 0)")
+// $not + regex selects values that do not match ^\d{5}$ (exactly 5 digits). A NaN would also be caught here.
+printjson(db.restaurants.countDocuments({ "address.zip_code": { $ne: null, $not: /^\d{5}$/ } }))
+
+// 8. Invalid price range
+print("\n8 Invalid price range (should be 0)")
+// $nin = "not in". Selects documents whose price_range is not one of the valid levels (null means "unknown" and is allowed).
+printjson(db.restaurants.countDocuments({ price_range: { $nin: [null, "$", "$$", "$$$", "$$$$"] } }))
+
+// 9. NaN values
+print("\n9 NaN scores or ratings (should be 0)")
+// NaN is a number in MongoDB, not null: it passes {$ne: null} filters and turns every $avg into NaN.
+printjson(db.restaurants.countDocuments({ $or: [{ score: NaN }, { ratings: NaN }] }))
+
+// 10. Exact duplicates (same name and same address)
+// This pipeline detects restaurants loaded more than once. Should be 0 after the ETL.
+print("\n10 Duplicates by name + address (should be 0)")
 // db.restaurants.aggregate([...]) Executes an aggregation pipeline on the restaurants collection
 // An aggregation pipeline in MongoDB is a sequence of steps that process documents one by one, transforming them and producing a final result.
 printjson(
   db.restaurants.aggregate([
+    // Documents without an address cannot be compared, so they are excluded.
+    { $match: { "address.full_address": { $ne: null } } },
     {
-      // $group Groups documents by a field or expression. Allows accumulators. Groups documents by the name field.
-      // For each group, calculates count by adding 1 for each document, basically counting how many restaurants have the same name.
+      // $group Groups documents by a field or expression. Allows accumulators. Groups documents by name and address.
+      // For each group, calculates count by adding 1 for each document.
       $group: {
         // _id: Within a $group stage in an aggregation pipeline, the _id field defines the criteria by which documents will be grouped. Each distinct _id value becomes a "group key".
-        _id: "$name",
+        _id: { name: "$name", address: "$address.full_address" },
         // count: This is the name of the field that will be created in the grouping result. Each group will have its own count value.
         count: { $sum: 1 }
       }
     },
     // `$match` filters documents (similar to `find`, but within the pipeline). It's used to restrict results after a transformation.
-    // Filters groups and leaves only those where `count` > 1. That is, names that appear more than once → potential duplicates.
-    { $match: { count: { $gt: 1 } } }
+    // Filters groups and leaves only those where `count` > 1.
+    { $match: { count: { $gt: 1 } } },
+    // $count returns a single document with the number of groups that reached this stage.
+    { $count: "duplicated_groups" }
   // .toArray() Converts the pipeline output into an array of documents so it can be printed.
+  ]).toArray()
+)
+
+// 11. Repeated names
+// The same name at different addresses is usually a chain, not an error. Only the 10 most repeated are shown.
+print("\n11 Most repeated names (chains, not errors)")
+printjson(
+  db.restaurants.aggregate([
+    { $group: { _id: "$name", count: { $sum: 1 } } },
+    { $match: { count: { $gt: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: 10 }
   ]).toArray()
 )
 

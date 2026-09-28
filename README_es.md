@@ -68,9 +68,10 @@ MongoDB se utiliza como:
 
 Construido con `pandas` y `pymongo`:
 
-- Carga de datos CSV
-- Limpieza y normalización
+- Carga de datos CSV (códigos postales leídos como texto para conservar los ceros iniciales)
+- Limpieza y normalización: entidades HTML, espacios sobrantes, rangos de precio inválidos, ZIP+4 → ZIP de 5 dígitos, coordenadas `(0, 0)` usadas como marcador, restaurantes duplicados
 - Ingeniería de características (campos anidados, GeoJSON)
+- Valores faltantes guardados como `null` real (no `NaN`, que rompe `$avg` y los filtros `$ne: null`)
 - Inserción por lotes en MongoDB
 
 ## Capa de Validación de Datos
@@ -81,13 +82,14 @@ Detecta:
 - Campos faltantes
 - Duplicados
 - Datos de ubicación incompletos
+- Formatos inválidos de ZIP / precio y valores `NaN`
 
 ## Estrategia de Indexación
 
-- `name`, `category`, `score`, `ratings`
+- `name`, `score`, `ratings`
 - `address.zip_code`
 - Índice 2dsphere para ubicación
-- Índice compuesto (`category`, `score`)
+- Índice compuesto (`category`, `score`), que también resuelve las consultas solo por categoría (prefijo del índice), por lo que no hace falta un índice separado sobre `category`
 
 Mejora el rendimiento de filtrado, ordenamiento y consultas geoespaciales.
 
@@ -121,6 +123,22 @@ Permite:
 - Recomendaciones cercanas
 - Búsquedas por proximidad
 - Información y análisis regionales
+
+## Cómo Ejecutarlo
+
+Requisitos: Python 3.12+, MongoDB corriendo en `localhost:27017` y `mongosh`.
+
+```bash
+pip install -r requirements.txt
+cd scripts
+python "1) etl_pipeline.py"
+mongosh restaurants_db "2) setup.js"
+mongosh restaurants_db "3) data_validation.js"
+mongosh restaurants_db "4) advanced_queries.js"
+mongosh restaurants_db "5) aggregation_kpis.js"
+```
+
+El ETL lee `MONGO_URI` y `MONGO_DB` desde variables de entorno (por defecto: `mongodb://localhost:27017` y `restaurants_db`).
 
 ## Autor
 
